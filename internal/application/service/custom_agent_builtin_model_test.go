@@ -71,6 +71,46 @@ func TestGetBuiltinAgentInheritsDefaultModelForPersistedConfig(t *testing.T) {
 	require.Equal(t, 0.25, agent.Config.Temperature, "tenant customizations must be preserved")
 }
 
+func TestUserFacingBuiltinAgentsUseDefaultChatModel(t *testing.T) {
+	loadBuiltinAgentsForModelDefaultTest(t)
+
+	expectedIDs := []string{
+		types.BuiltinQuickAnswerID,
+		types.BuiltinSmartReasoningID,
+		types.BuiltinWikiResearcherID,
+	}
+	require.Equal(t, expectedIDs, types.GetBuiltinAgentIDs())
+	for _, id := range expectedIDs {
+		agent := types.GetBuiltinAgent(id, 42)
+		require.NotNil(t, agent, "built-in agent %s must be configured", id)
+		require.Equal(t, "builtin-llm-default", agent.Config.ModelID)
+	}
+}
+
+func TestRetiredDataAnalystIsNotAccessible(t *testing.T) {
+	loadBuiltinAgentsForModelDefaultTest(t)
+
+	const tenantID = uint64(42)
+	legacy := &types.CustomAgent{
+		ID:        types.BuiltinDataAnalystID,
+		TenantID:  tenantID,
+		IsBuiltin: true,
+	}
+	svc := &customAgentService{repo: &builtinModelDefaultAgentRepo{
+		agents: []*types.CustomAgent{legacy},
+	}}
+	ctx := context.WithValue(context.Background(), types.TenantIDContextKey, tenantID)
+
+	_, err := svc.GetAgentByID(ctx, types.BuiltinDataAnalystID)
+	require.ErrorIs(t, err, ErrAgentNotFound)
+
+	agents, err := svc.ListAgents(ctx)
+	require.NoError(t, err)
+	for _, agent := range agents {
+		require.NotEqual(t, types.BuiltinDataAnalystID, agent.ID)
+	}
+}
+
 func TestListAgentsInheritsDefaultModelForPersistedBuiltin(t *testing.T) {
 	loadBuiltinAgentsForModelDefaultTest(t)
 

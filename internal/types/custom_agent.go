@@ -16,14 +16,10 @@ const (
 	BuiltinQuickAnswerID = "builtin-quick-answer"
 	// BuiltinSmartReasoningID is the ID for the built-in smart reasoning (ReAct) agent
 	BuiltinSmartReasoningID = "builtin-smart-reasoning"
-	// BuiltinDeepResearcherID is the ID for the built-in deep researcher agent
-	BuiltinDeepResearcherID = "builtin-deep-researcher"
-	// BuiltinDataAnalystID is the ID for the built-in data analyst agent
+	// BuiltinDataAnalystID is reserved for the retired built-in data analyst agent.
+	// Keeping the ID reserved prevents persisted legacy rows from being exposed
+	// as user-created agents after the built-in definition is removed.
 	BuiltinDataAnalystID = "builtin-data-analyst"
-	// BuiltinKnowledgeGraphExpertID is the ID for the built-in knowledge graph expert agent
-	BuiltinKnowledgeGraphExpertID = "builtin-knowledge-graph-expert"
-	// BuiltinDocumentAssistantID is the ID for the built-in document assistant agent
-	BuiltinDocumentAssistantID = "builtin-document-assistant"
 	// BuiltinWikiResearcherID is the ID for the built-in wiki researcher agent
 	BuiltinWikiResearcherID = "builtin-wiki-researcher"
 	// BuiltinWikiFixerID is the ID for the built-in wiki fixer agent
@@ -607,10 +603,10 @@ var builtinAgentIDsOrdered = []string{
 	BuiltinQuickAnswerID,
 	BuiltinSmartReasoningID,
 	BuiltinWikiResearcherID,
-	BuiltinDeepResearcherID,
-	BuiltinDataAnalystID,
-	BuiltinKnowledgeGraphExpertID,
-	BuiltinDocumentAssistantID,
+}
+
+var retiredBuiltinAgentIDs = map[string]struct{}{
+	BuiltinDataAnalystID: {},
 }
 
 // GetBuiltinAgentIDs returns all built-in agent IDs in fixed order
@@ -620,8 +616,11 @@ func GetBuiltinAgentIDs() []string {
 
 // IsBuiltinAgentID checks if the given ID is a built-in agent ID
 func IsBuiltinAgentID(id string) bool {
-	_, exists := BuiltinAgentRegistry[id]
-	return exists
+	if _, exists := BuiltinAgentRegistry[id]; exists {
+		return true
+	}
+	_, retired := retiredBuiltinAgentIDs[id]
+	return retired
 }
 
 // GetBuiltinAgent returns a built-in agent by ID, or nil if not found

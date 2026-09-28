@@ -158,6 +158,10 @@ func (s *customAgentService) GetAgentByID(ctx context.Context, id string) (*type
 
 	// Check if it's a built-in agent using the registry
 	if types.IsBuiltinAgentID(id) {
+		builtinAgent := types.GetBuiltinAgentWithContext(ctx, id, tenantID)
+		if builtinAgent == nil {
+			return nil, ErrAgentNotFound
+		}
 		// Try to get from database first (for customized config)
 		agent, err := s.repo.GetAgentByID(ctx, id, tenantID)
 		if err == nil {
@@ -168,9 +172,7 @@ func (s *customAgentService) GetAgentByID(ctx context.Context, id string) (*type
 			return agent, nil
 		}
 		// Not in database, return default built-in agent from registry (i18n-aware)
-		if builtinAgent := types.GetBuiltinAgentWithContext(ctx, id, tenantID); builtinAgent != nil {
-			return builtinAgent, nil
-		}
+		return builtinAgent, nil
 	}
 
 	// Query from database
