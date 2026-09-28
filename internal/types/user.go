@@ -143,7 +143,11 @@ type AuthToken struct {
 // LoginRequest represents a login request
 type LoginRequest struct {
 	Email    string `json:"email"    binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6"`
+	Password string `json:"password" binding:"omitempty,min=6"`
+
+	// TenantProvisioning is resolved by the server and used only when a
+	// passwordless demo login auto-creates a previously unknown user.
+	TenantProvisioning TenantProvisioningMode `json:"-"`
 }
 
 type OIDCAuthURLResponse struct {

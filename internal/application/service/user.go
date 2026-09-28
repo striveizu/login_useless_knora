@@ -227,9 +227,20 @@ func (s *userService) Register(ctx context.Context, req *types.RegisterRequest) 
 // Login authenticates a user and returns tokens
 func (s *userService) Login(ctx context.Context, req *types.LoginRequest) (*types.LoginResponse, error) {
 	logger.Info(ctx, "Start user login")
+	passwordlessLogin := s.config != nil && s.config.Auth != nil &&
+		s.config.Auth.PasswordlessEmailLoginEnabled
+	autoRegister := passwordlessLogin && s.config.Auth.PasswordlessEmailAutoRegisterEnabled
+
 	// Get user by email
 	user, err := s.userRepo.GetUserByEmail(ctx, req.Email)
-	if err != nil {
+	if autoRegister && ((err == nil && user == nil) || isUserLookupNotFound(err)) {
+		user, err = s.provisionPasswordlessEmailUser(ctx, req.Email, req.TenantProvisioning)
+		if err != nil {
+			logger.Errorf(ctx, "Failed to auto-provision passwordless user: %v", err)
+			return nil, fmt.Errorf("failed to auto-provision passwordless user: %w", err)
+		}
+		logger.Info(ctx, "Passwordless user auto-provisioned successfully")
+	} else if err != nil {
 		logger.Errorf(ctx, "Failed to get user by email: %v", err)
 		return &types.LoginResponse{
 			Success: false,
@@ -253,16 +264,20 @@ func (s *userService) Login(ctx context.Context, req *types.LoginRequest) (*type
 		}, nil
 	}
 
-	// Verify password
-	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password))
-	if err != nil {
-		logger.Warn(ctx, "Password verification failed")
-		return &types.LoginResponse{
-			Success: false,
-			Message: "Invalid email or password",
-		}, nil
+	if passwordlessLogin {
+		logger.Warn(ctx, "Password verification skipped: passwordless email login is enabled")
+	} else {
+		// Verify password
+		err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password))
+		if err != nil {
+			logger.Warn(ctx, "Password verification failed")
+			return &types.LoginResponse{
+				Success: false,
+				Message: "Invalid email or password",
+			}, nil
+		}
+		logger.Info(ctx, "Password verification successful")
 	}
-	logger.Info(ctx, "Password verification successful")
 
 	// Generate tokens. Resolve the target tenant once so the JWT claim
 	// and the tenant we return below agree — otherwise an honoured
@@ -304,6 +319,42 @@ func (s *userService) Login(ctx context.Context, req *types.LoginRequest) (*type
 		Token:        accessToken,
 		RefreshToken: refreshToken,
 	}, nil
+}
+
+// provisionPasswordlessEmailUser creates the minimum local identity needed
+// for a demo email login. Register owns workspace creation and Owner membership
+// bootstrapping, so the resulting user can create knowledge bases immediately.
+func (s *userService) provisionPasswordlessEmailUser(
+	ctx context.Context,
+	email string,
+	provisioning types.TenantProvisioningMode,
+) (*types.User, error) {
+	email = strings.TrimSpace(email)
+	info := &types.OIDCUserInfo{
+		Username: strings.Split(email, "@")[0],
+		Email:    email,
+	}
+	username := s.generateOIDCUsername(ctx, info)
+	randomPassword, err := generateRandomString(32)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate password: %w", err)
+	}
+
+	user, err := s.Register(ctx, &types.RegisterRequest{
+		Username:           username,
+		Email:              email,
+		Password:           randomPassword,
+		TenantProvisioning: provisioning,
+	})
+	if errors.Is(err, ErrUserEmailExists) {
+		// A simultaneous first login may have created the same account after
+		// our initial lookup. Resolve that race as an idempotent login.
+		return s.userRepo.GetUserByEmail(ctx, email)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
 }
 
 // buildMembershipsForUser returns the user's tenant memberships projected

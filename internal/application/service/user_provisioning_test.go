@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/Tencent/WeKnora/internal/config"
 	"github.com/Tencent/WeKnora/internal/types"
 	"github.com/Tencent/WeKnora/internal/types/interfaces"
 )
@@ -40,11 +41,11 @@ type provisioningTenantService struct {
 
 func (s *provisioningTenantService) CreateTenant(context.Context, *types.Tenant) (*types.Tenant, error) {
 	s.createCalls++
-	return &types.Tenant{ID: 99}, nil
+	return &types.Tenant{ID: 99, Name: "Demo Workspace"}, nil
 }
 
 func (s *provisioningTenantService) GetTenantByID(_ context.Context, id uint64) (*types.Tenant, error) {
-	return &types.Tenant{ID: id}, nil
+	return &types.Tenant{ID: id, Name: "Demo Workspace"}, nil
 }
 
 type provisioningMemberService struct {
@@ -54,6 +55,76 @@ type provisioningMemberService struct {
 
 func (s *provisioningMemberService) ListByUser(context.Context, string) ([]*types.TenantMember, error) {
 	return s.members, nil
+}
+
+func (s *provisioningMemberService) EnsureOwner(_ context.Context, userID string, tenantID uint64) (*types.TenantMember, error) {
+	member := &types.TenantMember{
+		UserID:   userID,
+		TenantID: tenantID,
+		Role:     types.TenantRoleOwner,
+		Status:   types.TenantMemberStatusActive,
+	}
+	s.members = append(s.members, member)
+	return member, nil
+}
+
+func (s *provisioningMemberService) GetMembership(_ context.Context, userID string, tenantID uint64) (*types.TenantMember, error) {
+	for _, member := range s.members {
+		if member.UserID == userID && member.TenantID == tenantID {
+			return member, nil
+		}
+	}
+	return nil, nil
+}
+
+type provisioningTokenRepo struct {
+	interfaces.AuthTokenRepository
+	created int
+}
+
+func (r *provisioningTokenRepo) CreateToken(context.Context, *types.AuthToken) error {
+	r.created++
+	return nil
+}
+
+func TestPasswordlessLoginAutoRegistersUserWithPersonalWorkspace(t *testing.T) {
+	repo := &provisioningUserRepo{}
+	tenantSvc := &provisioningTenantService{}
+	memberSvc := &provisioningMemberService{}
+	tokenRepo := &provisioningTokenRepo{}
+	svc := &userService{
+		userRepo:      repo,
+		tokenRepo:     tokenRepo,
+		tenantService: tenantSvc,
+		memberService: memberSvc,
+		config: &config.Config{Auth: &config.AuthConfig{
+			PasswordlessEmailLoginEnabled:        true,
+			PasswordlessEmailAutoRegisterEnabled: true,
+		}},
+	}
+
+	response, err := svc.Login(context.Background(), &types.LoginRequest{
+		Email:              "demo@example.com",
+		TenantProvisioning: types.TenantProvisioningCreatePersonal,
+	})
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	if response == nil || !response.Success {
+		t.Fatalf("Login response = %#v, want success", response)
+	}
+	if repo.created == nil || repo.created.Email != "demo@example.com" {
+		t.Fatalf("created user = %#v", repo.created)
+	}
+	if tenantSvc.createCalls != 1 || response.ActiveTenant == nil || response.ActiveTenant.ID != 99 {
+		t.Fatalf("personal workspace was not provisioned: calls=%d tenant=%#v", tenantSvc.createCalls, response.ActiveTenant)
+	}
+	if len(response.Memberships) != 1 || response.Memberships[0].Role != types.TenantRoleOwner {
+		t.Fatalf("owner membership missing: %#v", response.Memberships)
+	}
+	if tokenRepo.created != 2 || response.Token == "" || response.RefreshToken == "" {
+		t.Fatalf("tokens not generated: stored=%d", tokenRepo.created)
+	}
 }
 
 func TestUserServiceRegisterTenantlessSkipsTenantCreation(t *testing.T) {

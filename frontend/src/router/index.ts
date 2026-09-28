@@ -43,6 +43,12 @@ function hasPendingOIDCCallback() {
   return hash.includes('oidc_result=') || hash.includes('oidc_error=')
 }
 
+function hasPasswordlessEmailQuery(route: RouteLocationNormalized) {
+  const raw = route.query.demo_email ?? route.query.email
+  const email = Array.isArray(raw) ? raw[0] : raw
+  return typeof email === 'string' && email.trim() !== ''
+}
+
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
@@ -351,7 +357,7 @@ router.beforeEach(async (to, from, next) => {
   // 如果访问的是登录页面或初始化页面，直接放行
   if (to.meta.requiresAuth === false || to.meta.requiresInit === false) {
     // 如果已登录用户访问登录页面，重定向到知识库列表页面
-    if (to.path === '/login' && authStore.isLoggedIn) {
+    if (to.path === '/login' && authStore.isLoggedIn && !hasPasswordlessEmailQuery(to)) {
       next(authStore.hasValidTenant ? '/platform/knowledge-bases' : '/onboarding/workspace')
       return
     }

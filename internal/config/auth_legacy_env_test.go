@@ -103,6 +103,17 @@ func TestApplyAuthAndTenantDefaults_DefaultTenantMode(t *testing.T) {
 	})
 }
 
+func TestApplyAuthAndTenantDefaults_PasswordlessEmailAutoRegister(t *testing.T) {
+	t.Setenv("WEKNORA_AUTH_PASSWORDLESS_EMAIL_AUTO_REGISTER_ENABLED", "true")
+	cfg := &Config{Auth: &AuthConfig{}}
+
+	applyAuthAndTenantDefaults(cfg)
+
+	if !cfg.Auth.PasswordlessEmailAutoRegisterEnabled {
+		t.Fatal("passwordless email auto registration should be enabled by the environment")
+	}
+}
+
 // TestApplyAuthAndTenantDefaults_CrossTenantAccess is a regression test for the
 // env-binding gap: viper.AutomaticEnv has no SetEnvPrefix, so
 // WEKNORA_TENANT_ENABLE_CROSS_TENANT_ACCESS is never bound to the nested struct

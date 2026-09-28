@@ -281,6 +281,14 @@ type AuthConfig struct {
 	// explicit self-service tenant creation.
 	DefaultTenantMode      string `yaml:"default_tenant_mode" json:"default_tenant_mode"`
 	ComplexPasswordEnabled bool   `yaml:"complex_password_enabled" json:"complex_password_enabled"`
+	// PasswordlessEmailLoginEnabled lets an existing active user sign in with
+	// only their email address. It is intended for temporary trusted/dev
+	// deployments and is deliberately controlled at process startup.
+	PasswordlessEmailLoginEnabled bool `yaml:"passwordless_email_login_enabled" json:"passwordless_email_login_enabled"`
+	// PasswordlessEmailAutoRegisterEnabled creates a local user and personal
+	// workspace when passwordless login receives an email that does not exist.
+	// It has no effect unless PasswordlessEmailLoginEnabled is also enabled.
+	PasswordlessEmailAutoRegisterEnabled bool `yaml:"passwordless_email_auto_register_enabled" json:"passwordless_email_auto_register_enabled"`
 }
 
 // AuthRegistrationMode constants used by handlers and middleware.
@@ -855,6 +863,18 @@ func applyAuthAndTenantDefaults(cfg *Config) {
 	if value := strings.TrimSpace(os.Getenv("WEKNORA_AUTH_COMPLEX_PASSWORD_ENABLED")); value != "" {
 		if parsed, err := strconv.ParseBool(value); err == nil {
 			cfg.Auth.ComplexPasswordEnabled = parsed
+		}
+	}
+
+	if value := strings.TrimSpace(os.Getenv("WEKNORA_AUTH_PASSWORDLESS_EMAIL_LOGIN_ENABLED")); value != "" {
+		if parsed, err := strconv.ParseBool(value); err == nil {
+			cfg.Auth.PasswordlessEmailLoginEnabled = parsed
+		}
+	}
+
+	if value := strings.TrimSpace(os.Getenv("WEKNORA_AUTH_PASSWORDLESS_EMAIL_AUTO_REGISTER_ENABLED")); value != "" {
+		if parsed, err := strconv.ParseBool(value); err == nil {
+			cfg.Auth.PasswordlessEmailAutoRegisterEnabled = parsed
 		}
 	}
 

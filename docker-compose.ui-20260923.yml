@@ -1,0 +1,5 @@
+version: '2.4'
+
+services:
+  frontend:
+    image: weknora-local/weknora-ui:passwordless-0.8.0-20260923

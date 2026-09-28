@@ -152,6 +152,15 @@ func (h *AuthHandler) complexPasswordEnabled(ctx context.Context) bool {
 	return service.ResolveComplexPasswordEnabled(ctx, h.configInfo, h.systemSettingSvc)
 }
 
+func (h *AuthHandler) passwordlessEmailLoginEnabled() bool {
+	return h.configInfo != nil && h.configInfo.Auth != nil &&
+		h.configInfo.Auth.PasswordlessEmailLoginEnabled
+}
+
+func (h *AuthHandler) passwordlessEmailAutoRegisterEnabled() bool {
+	return h.passwordlessEmailLoginEnabled() && h.configInfo.Auth.PasswordlessEmailAutoRegisterEnabled
+}
+
 func (h *SystemHandler) complexPasswordEnabled(ctx context.Context) bool {
 	return service.ResolveComplexPasswordEnabled(ctx, h.cfg, h.systemSettingSvc)
 }
@@ -266,13 +275,15 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 	email := secutils.SanitizeForLog(req.Email)
 
-	// Validate required fields
-	if req.Email == "" || req.Password == "" {
+	// Password is optional only when the deployment-level temporary bypass is
+	// explicitly enabled. Email remains mandatory in both modes.
+	if req.Email == "" || (!h.passwordlessEmailLoginEnabled() && req.Password == "") {
 		logger.Error(ctx, "Missing required login fields")
 		appErr := errors.NewValidationError("Email and password are required")
 		c.Error(appErr)
 		return
 	}
+	req.TenantProvisioning = h.resolveDefaultTenantMode(ctx)
 
 	// Call service to authenticate user
 	response, err := h.userService.Login(ctx, &req)
@@ -829,9 +840,11 @@ func (h *AuthHandler) GetAuthConfig(c *gin.Context) {
 		h.systemSettingSvc,
 	)
 	c.JSON(http.StatusOK, gin.H{
-		"success":                  true,
-		"registration_mode":        mode,
-		"complex_password_enabled": complexPasswordEnabled,
+		"success":                                  true,
+		"registration_mode":                        mode,
+		"complex_password_enabled":                 complexPasswordEnabled,
+		"passwordless_email_login_enabled":         h.passwordlessEmailLoginEnabled(),
+		"passwordless_email_auto_register_enabled": h.passwordlessEmailAutoRegisterEnabled(),
 	})
 }
 

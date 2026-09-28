@@ -52,10 +52,8 @@ services:
       # 同时设 true 并挂载实际 socket——这等同宿主机 root，仅私有化单机。
       # 入口脚本会按 socket GID 把 appuser 加入对应组（compose group_add 在 gosu 后无效）。
       # - /var/run/docker.sock:/var/run/docker.sock
-      # Optional: declarative built-in models. Copy config/builtin_models.yaml.example
-      # to config/builtin_models.yaml, edit it for your deployment, then
-      # uncomment the line below. See docs/BUILTIN_MODELS.md.
-      # - ./config/builtin_models.yaml:/app/config/builtin_models.yaml:ro
+      # Declarative built-in models shared by every workspace.
+      - ./config/builtin_models.yaml:/app/config/builtin_models.yaml:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -122,6 +120,10 @@ services:
       - DISABLE_REGISTRATION=${DISABLE_REGISTRATION:-false}
       # 开启后密码必须包含大小写字母、数字和特殊字符，特殊字符包含：!@#$%^&*()_+-=[]{}|;:,.<>?
       - WEKNORA_AUTH_COMPLEX_PASSWORD_ENABLED=${WEKNORA_AUTH_COMPLEX_PASSWORD_ENABLED:-false}
+      # 临时邮箱免密登录：仅校验用户存在且已启用；默认关闭。
+      - WEKNORA_AUTH_PASSWORDLESS_EMAIL_LOGIN_ENABLED=${WEKNORA_AUTH_PASSWORDLESS_EMAIL_LOGIN_ENABLED:-false}
+      # 演示模式自动开户：免密登录的邮箱不存在时，创建用户及个人空间；默认关闭。
+      - WEKNORA_AUTH_PASSWORDLESS_EMAIL_AUTO_REGISTER_ENABLED=${WEKNORA_AUTH_PASSWORDLESS_EMAIL_AUTO_REGISTER_ENABLED:-false}
       # 公开注册后的默认空间策略：create_personal（默认，自动创建个人空间）/ tenantless
       - WEKNORA_AUTH_DEFAULT_TENANT_MODE=${WEKNORA_AUTH_DEFAULT_TENANT_MODE:-create_personal}
       # 是否允许普通用户登录后主动创建空间（默认 true；false 仅能邀请加入，超管不受影响）
@@ -600,7 +602,7 @@ services:
       - full
 
   minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: WeKnora-minio
     ports:
       - "${MINIO_PORT:-9000}:9000"
@@ -854,7 +856,7 @@ services:
       - full
 
   langfuse-minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     container_name: WeKnora-langfuse-minio
     restart: unless-stopped
     entrypoint: sh

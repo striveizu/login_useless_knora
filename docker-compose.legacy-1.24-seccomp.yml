@@ -1,0 +1,12 @@
+version: '2.4'
+
+# Compatibility override for an already-copied legacy Compose file.
+# It disables seccomp only for the services affected by Docker 19.03's old
+# clone3 policy, not for the whole deployment.
+services:
+  postgres:
+    security_opt:
+      - seccomp=unconfined
+  docreader:
+    security_opt:
+      - seccomp=unconfined

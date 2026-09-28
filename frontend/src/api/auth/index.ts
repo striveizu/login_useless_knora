@@ -6,7 +6,7 @@ const t = (key: string) => i18n.global.t(key)
 // 用户登录接口
 export interface LoginRequest {
   email: string
-  password: string
+  password?: string
 }
 
 export interface LoginResponse {
@@ -264,6 +264,8 @@ export interface AuthConfigResponse {
   success: boolean
   registration_mode: 'self_serve' | 'invite_only' | string
   complex_password_enabled: boolean
+  passwordless_email_login_enabled: boolean
+  passwordless_email_auto_register_enabled: boolean
 }
 
 export async function getAuthConfig(): Promise<AuthConfigResponse> {
@@ -271,7 +273,13 @@ export async function getAuthConfig(): Promise<AuthConfigResponse> {
     const response = await get('/api/v1/auth/config')
     return response as unknown as AuthConfigResponse
   } catch {
-    return { success: false, registration_mode: 'self_serve', complex_password_enabled: false }
+    return {
+      success: false,
+      registration_mode: 'self_serve',
+      complex_password_enabled: false,
+      passwordless_email_login_enabled: false,
+      passwordless_email_auto_register_enabled: false,
+    }
   }
 }
 

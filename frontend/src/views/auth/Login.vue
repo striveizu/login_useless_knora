@@ -1,5 +1,7 @@
 <template>
   <div class="login-layout">
+    <div v-if="demoAutoLoginPending" class="demo-auto-login" aria-busy="true"></div>
+
     <div class="animated-bg">
       <div class="knowledge-node node-1">
         <svg class="node-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -206,7 +208,7 @@
                   autocomplete="email" size="large" :disabled="loading" />
               </t-form-item>
 
-              <t-form-item :label="$t('auth.password')" name="password">
+              <t-form-item v-if="!passwordlessEmailLoginEnabled" :label="$t('auth.password')" name="password">
                 <t-input v-model="formData.password" :placeholder="$t('auth.passwordPlaceholder')" type="password"
                   autocomplete="current-password" size="large" :disabled="loading" @enter="handleLogin" />
               </t-form-item>
@@ -378,6 +380,16 @@ const authStore = useAuthStore()
 const { t, tm, locale } = useI18n()
 const { formatRole, roleIcon } = useRoleLabel()
 
+const getDemoEmail = () => {
+  const raw = route.query.demo_email ?? route.query.email
+  const email = Array.isArray(raw) ? raw[0] : raw
+  return typeof email === 'string' ? email.trim() : ''
+}
+
+// Determine this before the first render. Otherwise the regular login form is
+// painted once before onMounted starts the URL-driven login request.
+const demoAutoLoginPending = ref(Boolean(getDemoEmail()))
+
 // Swiper modules
 const modules = [Autoplay, EffectFade, Pagination]
 
@@ -421,6 +433,8 @@ const oidcProviderName = ref('')
 // In invite_only mode the link/card are hidden.
 const registrationEnabled = ref(true)
 const complexPasswordEnabled = ref(false)
+const passwordlessEmailLoginEnabled = ref(false)
+const passwordlessEmailAutoRegisterEnabled = ref(false)
 
 // invite-link state. When the URL carries ?token=xxx we resolve it to
 // the originating tenant + role and switch the form into a "register
@@ -471,11 +485,11 @@ const formRules = computed(() => ({
     { required: true, message: t('auth.emailRequired'), type: 'error' },
     { email: true, message: t('auth.emailInvalid'), type: 'error' }
   ],
-  password: [
+  ...(!passwordlessEmailLoginEnabled.value && { password: [
     { required: true, message: t('auth.passwordRequired'), type: 'error' },
     { min: 8, message: t('auth.passwordMinLength'), type: 'error' },
     { max: 32, message: t('auth.passwordMaxLength'), type: 'error' }
-  ],
+  ] }),
 }))
 
 // Register form validation rules
@@ -620,9 +634,45 @@ const loadAuthConfig = async () => {
     const response = await getAuthConfig()
     registrationEnabled.value = response.registration_mode !== 'invite_only'
     complexPasswordEnabled.value = response.complex_password_enabled
+    passwordlessEmailLoginEnabled.value = response.passwordless_email_login_enabled
+    passwordlessEmailAutoRegisterEnabled.value = response.passwordless_email_auto_register_enabled
   } catch {
     registrationEnabled.value = true
     complexPasswordEnabled.value = false
+    passwordlessEmailLoginEnabled.value = false
+    passwordlessEmailAutoRegisterEnabled.value = false
+  }
+}
+
+const demoRedirectPath = () => {
+  const raw = Array.isArray(route.query.redirect) ? route.query.redirect[0] : route.query.redirect
+  const path = typeof raw === 'string' ? raw.trim() : ''
+  return path.startsWith('/') && !path.startsWith('//')
+    ? path
+    : '/platform/knowledge-bases'
+}
+
+const handleDemoEmailLogin = async (email: string) => {
+  formData.email = email
+  loading.value = true
+  try {
+    const response = await login({ email })
+    if (!response.success) {
+      MessagePlugin.error(response.message || t('auth.loginError'))
+      return
+    }
+    // Replace the previous browser identity only after the target account has
+    // authenticated successfully. This clears account-scoped caches without
+    // leaving an unauthenticated gap while the login request is in flight.
+    authStore.logout()
+    await persistLoginResponse(response, true)
+    notifyLoginSuccess(response, t, tm, formatRole, roleIcon)
+    await router.replace(demoRedirectPath())
+  } catch (error: any) {
+    console.error('演示邮箱自动登录失败:', error)
+    MessagePlugin.error(error.message || t('auth.loginErrorRetry'))
+  } finally {
+    loading.value = false
   }
 }
 
@@ -677,10 +727,9 @@ const handleLogin = async () => {
 
     loading.value = true
 
-    const response = await login({
-      email: formData.email,
-      password: formData.password,
-    })
+    const response = await login(passwordlessEmailLoginEnabled.value
+      ? { email: formData.email }
+      : { email: formData.email, password: formData.password })
 
     if (response.success) {
       if (inviteToken.value) {
@@ -804,7 +853,24 @@ onMounted(async () => {
     const cfg = await getAuthConfig()
     const inviteOnly = cfg.registration_mode === 'invite_only'
     registrationEnabled.value = !inviteOnly
+    complexPasswordEnabled.value = cfg.complex_password_enabled
+    passwordlessEmailLoginEnabled.value = cfg.passwordless_email_login_enabled
+    passwordlessEmailAutoRegisterEnabled.value = cfg.passwordless_email_auto_register_enabled
     isRegisterMode.value = !inviteOnly
+    loadOIDCConfig()
+    return
+  }
+
+  const demoEmail = getDemoEmail()
+  if (demoEmail) {
+    await loadAuthConfig()
+    if (passwordlessEmailLoginEnabled.value && passwordlessEmailAutoRegisterEnabled.value) {
+      await handleDemoEmailLogin(demoEmail)
+    } else {
+      formData.email = demoEmail
+      MessagePlugin.error(t('auth.loginError'))
+    }
+    demoAutoLoginPending.value = false
     loadOIDCConfig()
     return
   }
@@ -855,6 +921,13 @@ onMounted(async () => {
       radial-gradient(circle at 80% 50%, rgba(255, 255, 255, 0.04) 0%, transparent 50%);
     pointer-events: none;
   }
+}
+
+.demo-auto-login {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: #fff;
 }
 
 .animated-bg {
