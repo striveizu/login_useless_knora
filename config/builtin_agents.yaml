@@ -24,6 +24,7 @@ builtin_agents:
         description: "지식 베이스 RAG Q&A를 통한 빠르고 정확한 답변"
     config:
       agent_mode: "quick-answer"
+      model_id: "builtin-llm-default"
       system_prompt_id: "default_kb"
       context_template_id: "default_context"
       temperature: 0.7
@@ -275,4 +276,3 @@ builtin_agents:
       reflection_enabled: false
       multi_turn_enabled: true
       history_turns: 10
-

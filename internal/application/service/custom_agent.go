@@ -45,6 +45,22 @@ type customAgentService struct {
 	knowledgeRepo  interfaces.KnowledgeRepository
 }
 
+// applyBuiltinAgentModelDefault keeps tenant-level overrides compatible with
+// new built-in defaults. Older tenants may already have a persisted built-in
+// agent row whose config predates model_id; in that case, inherit only the
+// model from the current built-in definition and preserve every other tenant
+// customization.
+func applyBuiltinAgentModelDefault(agent *types.CustomAgent, tenantID uint64) {
+	if agent == nil || !types.IsBuiltinAgentID(agent.ID) || strings.TrimSpace(agent.Config.ModelID) != "" {
+		return
+	}
+	defaultAgent := types.GetBuiltinAgent(agent.ID, tenantID)
+	if defaultAgent == nil {
+		return
+	}
+	agent.Config.ModelID = strings.TrimSpace(defaultAgent.Config.ModelID)
+}
+
 // NewCustomAgentService creates a new custom agent service
 func NewCustomAgentService(
 	repo interfaces.CustomAgentRepository,
@@ -146,6 +162,7 @@ func (s *customAgentService) GetAgentByID(ctx context.Context, id string) (*type
 		agent, err := s.repo.GetAgentByID(ctx, id, tenantID)
 		if err == nil {
 			// Found in database, overlay locale-specific name/description/avatar
+			applyBuiltinAgentModelDefault(agent, tenantID)
 			agent.EnsureDefaults()
 			types.ApplyBuiltinAgentLocalization(ctx, agent)
 			return agent, nil
@@ -208,6 +225,7 @@ func (s *customAgentService) ListAgents(ctx context.Context) ([]*types.CustomAge
 	// Track which built-in agents exist in database
 	builtinInDB := make(map[string]bool)
 	for _, agent := range allAgents {
+		applyBuiltinAgentModelDefault(agent, tenantID)
 		agent.EnsureDefaults()
 		if types.IsBuiltinAgentID(agent.ID) {
 			builtinInDB[agent.ID] = true
@@ -344,6 +362,7 @@ func (s *customAgentService) updateBuiltinAgent(ctx context.Context, agent *type
 	if existingAgent != nil {
 		// Update existing record - only update config, keep basic info unchanged
 		existingAgent.Config = agent.Config
+		applyBuiltinAgentModelDefault(existingAgent, tenantID)
 		existingAgent.UpdatedAt = time.Now()
 		existingAgent.EnsureDefaults()
 		if err := existingAgent.Config.QuestionSuggestions.Validate(); err != nil {
@@ -376,6 +395,7 @@ func (s *customAgentService) updateBuiltinAgent(ctx context.Context, agent *type
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
+	applyBuiltinAgentModelDefault(newAgent, tenantID)
 	newAgent.EnsureDefaults()
 	if err := newAgent.Config.QuestionSuggestions.Validate(); err != nil {
 		return nil, err
